@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+
+import os
+import shutil
+import sys
+
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+
+
+# append project directory to path so predict.py can be imported
+sys.path.append('.')
+
+from predict import MODEL_CACHE, BASE_ID, AUX_IDS
+
+if os.path.exists(MODEL_CACHE):
+    shutil.rmtree(MODEL_CACHE)
+os.makedirs(MODEL_CACHE, exist_ok=True)
+
+for model in AUX_IDS:
+    aux = ControlNetModel.from_pretrained(
+        model,
+        cache_dir=MODEL_CACHE,
+    )
+    pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        BASE_ID,
+        controlnet=aux,
+        cache_dir=MODEL_CACHE,
+    )
