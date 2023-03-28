@@ -239,8 +239,6 @@ class Predictor(BasePredictor):
 
         # Load input_image
         input_image = Image.open(image)
-        # Convert to numpy
-        input_image = np.array(input_image)
         input_image = self.process_image(input_image, structure, low_threshold=low_threshold, high_threshold=high_threshold)
         # Why a_prompt?
         prompt = prompt + ', ' + a_prompt
@@ -301,6 +299,8 @@ class Predictor(BasePredictor):
         return input_image
 
     def canny_preprocessor(self, image, low_threshold, high_threshold):
+        # Convert to numpy
+        image = np.array(image)
         image = cv2.Canny(image, low_threshold, high_threshold)
         image = image[:, :, None]
         image = np.concatenate([image, image, image], axis=2)
@@ -316,9 +316,13 @@ class Predictor(BasePredictor):
         return image
 
     def hed_preprocessor(self, image):
+        # Convert to numpy
+        image = np.array(image)
         return self.controlnet_hed(image)
 
     def hough_preprocessor(self, image):
+        # Convert to numpy
+        image = np.array(image)
         return self.mlsd(image)
 
     def normal_preprocessor(self, image):
@@ -340,12 +344,17 @@ class Predictor(BasePredictor):
         return image
 
     def pose_preprocessor(self, image):
+        # Convert to numpy
+        image = np.array(image)
         return self.controlnet_pose(image)
 
     def scribble_preprocessor(self, image):
+        # Convert to numpy
+        image = np.array(image)
         return self.controlnet_hed(image, scribble=True)
 
     def seg_preprocessor(self, image):
+        image = image.convert('RGB')
         pixel_values = self.controlnet_seg_processor(image, return_tensors="pt").pixel_values
         with torch.no_grad():
             outputs = self.controlnet_seg_segmentor(pixel_values)
