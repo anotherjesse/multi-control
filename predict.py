@@ -175,7 +175,8 @@ class Predictor(BasePredictor):
                     description="Prompt for the model"
                 ),
                 structure: str = Input(
-                    description="Structure to condition on: canny, depth, hed, hough, normal, pose, scribble, seg"
+                    description="Structure to condition on",
+                    choices=["canny", "depth", "hed", "hough", "normal", "pose", "scribble", "seg"]
                 ),
                 num_samples: str = Input(
                     description="Number of samples (higher values may OOM)",
@@ -183,7 +184,7 @@ class Predictor(BasePredictor):
                     default='1'
                 ),
                 image_resolution: str = Input(
-                    description="Image resolution to be generated",
+                    description="Resolution of image (square)",
                     choices=['256', '512', '768'],
                     default='512'
                 ),
