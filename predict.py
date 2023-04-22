@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 import os
 from typing import List
@@ -5,10 +6,18 @@ import numpy as np
 from PIL import Image
 import cv2
 import time
+import tarfile
+import zipfile
+import io
+import requests
 
 from transformers import pipeline, AutoImageProcessor, UperNetForSemanticSegmentation
 from cog import BasePredictor, Input, Path
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+from diffusers import (
+    StableDiffusionControlNetPipeline,
+    ControlNetModel,
+    UniPCMultistepScheduler,
+)
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector
 
 
@@ -27,10 +36,51 @@ MODEL_CACHE = "controlnet-cache"
 
 
 class Predictor(BasePredictor):
-    def setup(self):
+    def download_zip(self, url):
+        destination_path = "/src/weights"
+
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
+                zip_file.extractall(destination_path)
+            self.weights = f"File downloaded and extracted to {destination_path}"
+        else:
+            self.weights = "Error: Unable to download the file."
+
+    def download_tar(self, url):
+        destination_path = "/src/weights"
+
+        response = requests.get(url)
+
+        if url.endswith(".tar.gz"):
+            mode = "r:gz"
+        else:
+            mode = "r:"
+
+        if response.status_code == 200:
+            with tarfile.open(
+                fileobj=io.BytesIO(response.content), mode=mode
+            ) as tar_file:
+                tar_file.extractall(destination_path)
+            self.weights = f"File downloaded and extracted to {destination_path}"
+        else:
+            self.weights = "Error: Unable to download the file."
+
+    def setup(self, weights: Optional[Path] = None):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
         st = time.time()
+        if weights:
+            weights = str(weights)
+            if weights.endswith(".zip"):
+                self.download_zip(weights)
+            if weights.endswith(".tar"):
+                self.download_tar(weights)
+            weights = '/src/weights'
+        else:
+            weights = BASE_ID
+
         # Canny
         controlnet_canny = ControlNetModel.from_pretrained(
             "lllyasviel/sd-controlnet-canny",
@@ -39,29 +89,33 @@ class Predictor(BasePredictor):
             local_files_only=True,
         )
         self.canny_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            weights,
             controlnet=controlnet_canny,
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         ).to("cuda")
-        self.canny_pipe.scheduler = UniPCMultistepScheduler.from_config(self.canny_pipe.scheduler.config)
+        self.canny_pipe.scheduler = UniPCMultistepScheduler.from_config(
+            self.canny_pipe.scheduler.config
+        )
         # Depth
-        self.depth_estimator = pipeline('depth-estimation')
+        self.depth_estimator = pipeline("depth-estimation")
         controlnet_depth = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-depth",
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.depth_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.depth_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_depth,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.depth_pipe.scheduler = UniPCMultistepScheduler.from_config(self.depth_pipe.scheduler.config)
         # Normal
         controlnet_normal = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-normal",
@@ -69,30 +123,34 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.normal_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.normal_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_normal,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.normal_pipe.scheduler = UniPCMultistepScheduler.from_config(self.normal_pipe.scheduler.config)
         # HED
-        self.controlnet_hed = HEDdetector.from_pretrained('lllyasviel/ControlNet')
+        self.controlnet_hed = HEDdetector.from_pretrained("lllyasviel/ControlNet")
         controlnet_hed = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-hed",
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.hed_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.hed_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_hed,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.hed_pipe.scheduler = UniPCMultistepScheduler.from_config(self.hed_pipe.scheduler.config)
         # Scribble
         controlnet_scribble = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-scribble",
@@ -100,69 +158,75 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.scribble_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.scribble_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_scribble,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.scribble_pipe.scheduler = UniPCMultistepScheduler.from_config(self.scribble_pipe.scheduler.config)
         # Hough
-        self.mlsd = MLSDdetector.from_pretrained(
-            'lllyasviel/ControlNet'
-        )
+        self.mlsd = MLSDdetector.from_pretrained("lllyasviel/ControlNet")
         controlnet_mlsd = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-mlsd",
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.hough_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.hough_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_mlsd,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.hough_pipe.scheduler = UniPCMultistepScheduler.from_config(self.hough_pipe.scheduler.config)
         # Seg
         self.controlnet_seg_processor = AutoImageProcessor.from_pretrained(
             "openmmlab/upernet-convnext-small"
         )
-        self.controlnet_seg_segmentor = UperNetForSemanticSegmentation.from_pretrained("openmmlab/upernet-convnext-small")
+        self.controlnet_seg_segmentor = UperNetForSemanticSegmentation.from_pretrained(
+            "openmmlab/upernet-convnext-small"
+        )
         controlnet_seg = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-seg",
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.seg_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.seg_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_seg,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.seg_pipe.scheduler = UniPCMultistepScheduler.from_config(self.seg_pipe.scheduler.config)
         # Pose
-        self.controlnet_pose = OpenposeDetector.from_pretrained(
-            "lllyasviel/ControlNet"
-        )
+        self.controlnet_pose = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
         controlnet_pose = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-openpose",
             torch_dtype=torch.float16,
             cache_dir=MODEL_CACHE,
             local_files_only=True,
         )
-        self.pose_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+        self.pose_pipe = StableDiffusionControlNetPipeline(
+            vae=self.canny_pipe.vae,
+            text_encoder=self.canny_pipe.text_encoder,
+            tokenizer=self.canny_pipe.tokenizer,
+            unet=self.canny_pipe.unet,
+            scheduler=self.canny_pipe.scheduler,
+            safety_checker=self.canny_pipe.safety_checker,
+            feature_extractor=self.canny_pipe.feature_extractor,
             controlnet=controlnet_pose,
-            torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
-            local_files_only=True,
         ).to("cuda")
-        self.pose_pipe.scheduler = UniPCMultistepScheduler.from_config(self.pose_pipe.scheduler.config)
         print("Setup complete in %f" % (time.time() - st))
 
 
