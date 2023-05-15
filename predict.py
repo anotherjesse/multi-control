@@ -6,10 +6,7 @@ import numpy as np
 from PIL import Image
 import cv2
 import time
-import tarfile
-import zipfile
-import io
-import requests
+import sys
 
 from transformers import pipeline, AutoImageProcessor, UperNetForSemanticSegmentation
 from cog import BasePredictor, Input, Path
@@ -21,7 +18,7 @@ from diffusers import (
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector
 
 
-BASE_ID = "runwayml/stable-diffusion-v1-5"
+SD15_WEIGHTS = "weights"
 AUX_IDS = [
     "lllyasviel/sd-controlnet-canny",
     "fusing/stable-diffusion-v1-5-controlnet-depth",
@@ -32,67 +29,35 @@ AUX_IDS = [
     "fusing/stable-diffusion-v1-5-controlnet-seg",
     "fusing/stable-diffusion-v1-5-controlnet-openpose",
 ]
-MODEL_CACHE = "controlnet-cache"
+CONTROLNET_CACHE = "controlnet-cache"
 
+if not os.path.exists(CONTROLNET_CACHE):
+    print("controlnet cache missing, use `cog run script/download_weights` to download")
+    sys.exit(1)
+
+if not os.path.exists(SD15_WEIGHTS):
+    print("sd15 weights missing, use `cog run python` and then load and save_pretrained('weights')")
+    sys.exit(1)
 
 class Predictor(BasePredictor):
-    def download_zip(self, url):
-        destination_path = "/src/weights"
 
-        response = requests.get(url)
-
-        if response.status_code == 200:
-            with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
-                zip_file.extractall(destination_path)
-            self.weights = f"File downloaded and extracted to {destination_path}"
-        else:
-            self.weights = "Error: Unable to download the file."
-
-    def download_tar(self, url):
-        destination_path = "/src/weights"
-
-        response = requests.get(url)
-
-        if url.endswith(".tar.gz"):
-            mode = "r:gz"
-        else:
-            mode = "r:"
-
-        if response.status_code == 200:
-            with tarfile.open(
-                fileobj=io.BytesIO(response.content), mode=mode
-            ) as tar_file:
-                tar_file.extractall(destination_path)
-            self.weights = f"File downloaded and extracted to {destination_path}"
-        else:
-            self.weights = "Error: Unable to download the file."
-
-    def setup(self, weights: Optional[Path] = None):
+    def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
         st = time.time()
-        if weights:
-            weights = str(weights)
-            if weights.endswith(".zip"):
-                self.download_zip(weights)
-            if weights.endswith(".tar"):
-                self.download_tar(weights)
-            weights = '/src/weights'
-        else:
-            weights = BASE_ID
 
         # Canny
         controlnet_canny = ControlNetModel.from_pretrained(
             "lllyasviel/sd-controlnet-canny",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.canny_pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            weights,
+            SD15_WEIGHTS,
             controlnet=controlnet_canny,
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         ).to("cuda")
         self.canny_pipe.scheduler = UniPCMultistepScheduler.from_config(
@@ -103,7 +68,7 @@ class Predictor(BasePredictor):
         controlnet_depth = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-depth",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.depth_pipe = StableDiffusionControlNetPipeline(
@@ -120,7 +85,7 @@ class Predictor(BasePredictor):
         controlnet_normal = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-normal",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.normal_pipe = StableDiffusionControlNetPipeline(
@@ -138,7 +103,7 @@ class Predictor(BasePredictor):
         controlnet_hed = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-hed",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.hed_pipe = StableDiffusionControlNetPipeline(
@@ -155,7 +120,7 @@ class Predictor(BasePredictor):
         controlnet_scribble = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-scribble",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.scribble_pipe = StableDiffusionControlNetPipeline(
@@ -173,7 +138,7 @@ class Predictor(BasePredictor):
         controlnet_mlsd = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-mlsd",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.hough_pipe = StableDiffusionControlNetPipeline(
@@ -196,7 +161,7 @@ class Predictor(BasePredictor):
         controlnet_seg = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-seg",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.seg_pipe = StableDiffusionControlNetPipeline(
@@ -214,7 +179,7 @@ class Predictor(BasePredictor):
         controlnet_pose = ControlNetModel.from_pretrained(
             "fusing/stable-diffusion-v1-5-controlnet-openpose",
             torch_dtype=torch.float16,
-            cache_dir=MODEL_CACHE,
+            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.pose_pipe = StableDiffusionControlNetPipeline(
