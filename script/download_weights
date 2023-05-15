@@ -5,11 +5,12 @@ import shutil
 import sys
 
 from diffusers import ControlNetModel
+from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector, MidasDetector
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
 
-from predict import CONTROLNET_CACHE, AUX_IDS
+from predict import CONTROLNET_CACHE, PROCESSORS_CACHE, AUX_IDS
 
 if os.path.exists(CONTROLNET_CACHE):
     shutil.rmtree(CONTROLNET_CACHE)
@@ -28,5 +29,7 @@ for name, model in AUX_IDS.items():
     )
     aux = aux.half()
     aux.save_pretrained(os.path.join(CONTROLNET_CACHE, name))
+
+MidasDetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
 
 shutil.rmtree(TMP_CACHE)

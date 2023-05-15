@@ -15,7 +15,7 @@ from diffusers import (
     ControlNetModel,
     StableDiffusionPipeline,
 )
-from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector
+from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector, MidasDetector
 
 
 AUX_IDS = {
@@ -31,6 +31,7 @@ AUX_IDS = {
 
 SD15_WEIGHTS = "weights"
 CONTROLNET_CACHE = "controlnet-cache"
+PROCESSORS_CACHE = "processors-cache"
 
 if not os.path.exists(CONTROLNET_CACHE):
     print("controlnet cache missing, use `cog run script/download_weights` to download")
@@ -59,9 +60,12 @@ class Predictor(BasePredictor):
             ).to("cuda")
 
         # Depth + Normal
-        self.depth_estimator = pipeline("depth-estimation")
+        self.midas = MidasDetector.from_pretrained(
+            "lllyasviel/ControlNet",
+            cache_dir=PROCESSORS_CACHE
+        )
 
-        # Normal
+        # HED
         self.controlnet_hed = HEDdetector.from_pretrained("lllyasviel/ControlNet")
 
         # Hough
@@ -193,7 +197,7 @@ class Predictor(BasePredictor):
         if structure == 'canny':
             input_image = self.canny_preprocessor(image, low_threshold, high_threshold)
         elif structure == 'depth':
-            input_image = self.depth_preprocessor(image)
+            input_image = self.midas(image)
         elif structure == 'hed':
             input_image = self.hed_preprocessor(image)
         elif structure == 'hough':
@@ -216,14 +220,6 @@ class Predictor(BasePredictor):
         image = np.concatenate([image, image, image], axis=2)
         canny_image = Image.fromarray(image)
         return canny_image
-
-    def depth_preprocessor(self, image):
-        image = self.depth_estimator(image)['depth']
-        image = np.array(image)
-        image = image[:, :, None]
-        image = np.concatenate([image, image, image], axis=2)
-        image = Image.fromarray(image)
-        return image
 
     def hed_preprocessor(self, image):
         # Convert to numpy
