@@ -48,9 +48,8 @@ class Predictor(BasePredictor):
 
         # Canny
         controlnet_canny = ControlNetModel.from_pretrained(
-            "lllyasviel/sd-controlnet-canny",
+            os.path.join(CONTROLNET_CACHE, "lllyasviel/sd-controlnet-canny"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.canny_pipe = StableDiffusionControlNetPipeline.from_pretrained(
@@ -66,9 +65,8 @@ class Predictor(BasePredictor):
         # Depth
         self.depth_estimator = pipeline("depth-estimation")
         controlnet_depth = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-depth",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-depth"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.depth_pipe = StableDiffusionControlNetPipeline(
@@ -83,9 +81,8 @@ class Predictor(BasePredictor):
         ).to("cuda")
         # Normal
         controlnet_normal = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-normal",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-normal"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.normal_pipe = StableDiffusionControlNetPipeline(
@@ -101,9 +98,8 @@ class Predictor(BasePredictor):
         # HED
         self.controlnet_hed = HEDdetector.from_pretrained("lllyasviel/ControlNet")
         controlnet_hed = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-hed",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-hed"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.hed_pipe = StableDiffusionControlNetPipeline(
@@ -118,9 +114,8 @@ class Predictor(BasePredictor):
         ).to("cuda")
         # Scribble
         controlnet_scribble = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-scribble",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-scribble"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.scribble_pipe = StableDiffusionControlNetPipeline(
@@ -136,9 +131,8 @@ class Predictor(BasePredictor):
         # Hough
         self.mlsd = MLSDdetector.from_pretrained("lllyasviel/ControlNet")
         controlnet_mlsd = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-mlsd",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-mlsd"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.hough_pipe = StableDiffusionControlNetPipeline(
@@ -159,9 +153,8 @@ class Predictor(BasePredictor):
             "openmmlab/upernet-convnext-small"
         )
         controlnet_seg = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-seg",
+            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-seg"),
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
             local_files_only=True,
         )
         self.seg_pipe = StableDiffusionControlNetPipeline(
