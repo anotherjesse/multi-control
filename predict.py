@@ -13,23 +13,23 @@ from cog import BasePredictor, Input, Path
 from diffusers import (
     StableDiffusionControlNetPipeline,
     ControlNetModel,
-    UniPCMultistepScheduler,
+    StableDiffusionPipeline,
 )
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector
 
 
+AUX_IDS = {
+    "canny": "lllyasviel/sd-controlnet-canny",
+    "depth": "fusing/stable-diffusion-v1-5-controlnet-depth",
+    "normal": "fusing/stable-diffusion-v1-5-controlnet-normal",
+    "hed": "fusing/stable-diffusion-v1-5-controlnet-hed",
+    "scribble": "fusing/stable-diffusion-v1-5-controlnet-scribble",
+    "mlsd": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
+    "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
+    "openpose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
+}
 
 SD15_WEIGHTS = "weights"
-AUX_IDS = [
-    "lllyasviel/sd-controlnet-canny",
-    "fusing/stable-diffusion-v1-5-controlnet-depth",
-    "fusing/stable-diffusion-v1-5-controlnet-normal",
-    "fusing/stable-diffusion-v1-5-controlnet-hed",
-    "fusing/stable-diffusion-v1-5-controlnet-scribble",
-    "fusing/stable-diffusion-v1-5-controlnet-mlsd",
-    "fusing/stable-diffusion-v1-5-controlnet-seg",
-    "fusing/stable-diffusion-v1-5-controlnet-openpose",
-]
 CONTROLNET_CACHE = "controlnet-cache"
 
 if not os.path.exists(CONTROLNET_CACHE):
@@ -45,105 +45,28 @@ class Predictor(BasePredictor):
         print("Loading pipeline...")
         st = time.time()
 
-        # Canny
-        controlnet_canny = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "lllyasviel/sd-controlnet-canny"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.canny_pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        self.pipe = StableDiffusionPipeline.from_pretrained(
             SD15_WEIGHTS,
-            controlnet=controlnet_canny,
             torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
-            local_files_only=True,
-        ).to("cuda")
-        self.canny_pipe.scheduler = UniPCMultistepScheduler.from_config(
-            self.canny_pipe.scheduler.config
-        )
-        # Depth
+            local_files_only=True).to("cuda")
+
+        self.controlnets = {}
+        for name in AUX_IDS.keys():
+            self.controlnets[name] = ControlNetModel.from_pretrained(
+                os.path.join(CONTROLNET_CACHE, name),
+                torch_dtype=torch.float16,
+                local_files_only=True,
+            ).to("cuda")
+
+        # Depth + Normal
         self.depth_estimator = pipeline("depth-estimation")
-        controlnet_depth = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-depth"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.depth_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_depth,
-        ).to("cuda")
+
         # Normal
-        controlnet_normal = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-normal"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.normal_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_normal,
-        ).to("cuda")
-        # HED
         self.controlnet_hed = HEDdetector.from_pretrained("lllyasviel/ControlNet")
-        controlnet_hed = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-hed"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.hed_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_hed,
-        ).to("cuda")
-        # Scribble
-        controlnet_scribble = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-scribble"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.scribble_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_scribble,
-        ).to("cuda")
+
         # Hough
         self.mlsd = MLSDdetector.from_pretrained("lllyasviel/ControlNet")
-        controlnet_mlsd = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-mlsd"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.hough_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_mlsd,
-        ).to("cuda")
+
         # Seg
         self.controlnet_seg_processor = AutoImageProcessor.from_pretrained(
             "openmmlab/upernet-convnext-small"
@@ -151,39 +74,10 @@ class Predictor(BasePredictor):
         self.controlnet_seg_segmentor = UperNetForSemanticSegmentation.from_pretrained(
             "openmmlab/upernet-convnext-small"
         )
-        controlnet_seg = ControlNetModel.from_pretrained(
-            os.path.join(CONTROLNET_CACHE, "fusing/stable-diffusion-v1-5-controlnet-seg"),
-            torch_dtype=torch.float16,
-            local_files_only=True,
-        )
-        self.seg_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_seg,
-        ).to("cuda")
+
         # Pose
         self.controlnet_pose = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
-        controlnet_pose = ControlNetModel.from_pretrained(
-            "fusing/stable-diffusion-v1-5-controlnet-openpose",
-            torch_dtype=torch.float16,
-            cache_dir=CONTROLNET_CACHE,
-            local_files_only=True,
-        )
-        self.pose_pipe = StableDiffusionControlNetPipeline(
-            vae=self.canny_pipe.vae,
-            text_encoder=self.canny_pipe.text_encoder,
-            tokenizer=self.canny_pipe.tokenizer,
-            unet=self.canny_pipe.unet,
-            scheduler=self.canny_pipe.scheduler,
-            safety_checker=self.canny_pipe.safety_checker,
-            feature_extractor=self.canny_pipe.feature_extractor,
-            controlnet=controlnet_pose,
-        ).to("cuda")
+
         print("Setup complete in %f" % (time.time() - st))
 
 
@@ -195,11 +89,11 @@ class Predictor(BasePredictor):
                 prompt: str = Input(
                     description="Prompt for the model"
                 ),
-                structure: str = Input(
+                structure: str = Input( # FIXME
                     description="Structure to condition on",
                     choices=["canny", "depth", "hed", "hough", "normal", "pose", "scribble", "seg"]
                 ),
-                num_samples: str = Input(
+                num_samples: str = Input( # FIXME
                     description="Number of samples (higher values may OOM)",
                     choices=['1', '4'],
                     default='1'
@@ -227,11 +121,11 @@ class Predictor(BasePredictor):
                     description="Controls the amount of noise that is added to the input data during the denoising diffusion process. Higher value -> more noise",
                     default=0.0
                 ),
-                a_prompt: str = Input(
+                a_prompt: str = Input(# FIXME
                     description="Additional text to be appended to prompt",
                     default="Best quality, extremely detailed"
                 ),
-                n_prompt: str = Input(
+                n_prompt: str = Input(# FIXME
                     description="Negative prompt",
                     default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality"
                 ),
@@ -262,6 +156,7 @@ class Predictor(BasePredictor):
         # Load input_image
         input_image = Image.open(image)
         input_image = self.process_image(input_image, structure, low_threshold=low_threshold, high_threshold=high_threshold)
+
         # Why a_prompt?
         prompt = prompt + ', ' + a_prompt
         outputs = pipe(
@@ -283,23 +178,16 @@ class Predictor(BasePredictor):
         return output_paths
 
     def select_pipe(self, structure):
-        if structure == 'canny':
-            pipe = self.canny_pipe
-        elif structure == 'depth':
-            pipe = self.depth_pipe
-        elif structure == 'hed':
-            pipe = self.hed_pipe
-        elif structure == 'hough':
-            pipe = self.hough_pipe
-        elif structure == 'normal':
-            pipe = self.normal_pipe
-        elif structure == 'pose':
-            pipe = self.pose_pipe
-        elif structure == 'scribble':
-            pipe = self.scribble_pipe
-        elif structure == 'seg':
-            pipe = self.seg_pipe
-        return pipe
+        return StableDiffusionControlNetPipeline(
+                vae=self.pipe.vae,
+                text_encoder=self.pipe.text_encoder,
+                tokenizer=self.pipe.tokenizer,
+                unet=self.pipe.unet,
+                scheduler=self.pipe.scheduler,
+                safety_checker=self.pipe.safety_checker,
+                feature_extractor=self.pipe.feature_extractor,
+                controlnet=self.controlnets[structure],
+            )
 
     def process_image(self, image, structure, low_threshold=100, high_threshold=200):
         if structure == 'canny':

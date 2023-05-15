@@ -21,12 +21,12 @@ if os.path.exists(TMP_CACHE):
     shutil.rmtree(TMP_CACHE)
 os.makedirs(TMP_CACHE)
 
-for model in AUX_IDS:
+for name, model in AUX_IDS.items():
     aux = ControlNetModel.from_pretrained(
         model,
         cache_dir=TMP_CACHE,
     )
     aux = aux.half()
-    aux.save_pretrained(os.path.join(CONTROLNET_CACHE, model))
+    aux.save_pretrained(os.path.join(CONTROLNET_CACHE, name))
 
 shutil.rmtree(TMP_CACHE)
