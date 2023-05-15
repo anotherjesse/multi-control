@@ -18,6 +18,7 @@ from diffusers import (
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector
 
 
+
 SD15_WEIGHTS = "weights"
 AUX_IDS = [
     "lllyasviel/sd-controlnet-canny",
@@ -33,11 +34,9 @@ CONTROLNET_CACHE = "controlnet-cache"
 
 if not os.path.exists(CONTROLNET_CACHE):
     print("controlnet cache missing, use `cog run script/download_weights` to download")
-    sys.exit(1)
 
 if not os.path.exists(SD15_WEIGHTS):
     print("sd15 weights missing, use `cog run python` and then load and save_pretrained('weights')")
-    sys.exit(1)
 
 class Predictor(BasePredictor):
 
