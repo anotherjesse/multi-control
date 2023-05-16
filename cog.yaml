@@ -7,7 +7,7 @@ build:
   python_packages:
     - "diffusers==0.15.1"
     - "torch==2.0.0"
-    - "opencv-contrib-python==4.6.0.66"
+    - "opencv-contrib-python-headless==4.6.0.66"
     - "controlnet-aux==0.0.3"
     - "transformers==4.29.1"
     - "xformers==0.0.19"
