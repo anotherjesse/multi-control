@@ -134,15 +134,16 @@ class Predictor(BasePredictor):
                 "seg",
             ],
         ),
-        num_samples: str = Input(  # FIXME
+        num_samples: int = Input(
             description="Number of samples (higher values may OOM)",
-            choices=["1", "4"],
-            default="1",
+            ge=1,
+            le=4,
+            default=1,
         ),
-        image_resolution: str = Input(
+        image_resolution: int = Input(
             description="Resolution of image (square)",
-            choices=["256", "512", "768"],
-            default="512",
+            choices=[256, 512, 768],
+            default=512,
         ),
         scheduler: str = Input(
             default="DPMSolverMultistep",
@@ -196,8 +197,6 @@ class Predictor(BasePredictor):
         pipe.enable_xformers_memory_efficient_attention()
         pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
 
-        num_samples = int(num_samples)
-        image_resolution = int(image_resolution)
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
@@ -211,6 +210,8 @@ class Predictor(BasePredictor):
             high_threshold=high_threshold,
         )
 
+        generator = torch.Generator("cuda").manual_seed(seed)
+
         outputs = pipe(
             prompt,
             input_image,
@@ -221,6 +222,7 @@ class Predictor(BasePredictor):
             eta=eta,
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_samples,
+            generator=generator,
         )
         output_paths = []
         for i, sample in enumerate(outputs.images):
