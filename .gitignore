@@ -2,3 +2,4 @@
 controlnet-cache
 processors-cache
 weights
+.*
