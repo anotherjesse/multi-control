@@ -39,7 +39,7 @@ AUX_IDS = {
     "normal": "fusing/stable-diffusion-v1-5-controlnet-normal",
     "hed": "fusing/stable-diffusion-v1-5-controlnet-hed",
     "scribble": "fusing/stable-diffusion-v1-5-controlnet-scribble",
-    "mlsd": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
+    "hough": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
     "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
     "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
 }
@@ -127,7 +127,7 @@ class Predictor(BasePredictor):
                 "canny",
                 "depth",
                 "hed",
-                "hough",
+                "hough", # FIXME(ja): why is this called hough if it is m-lsd? the original controlnet is called https://huggingface.co/lllyasviel/sd-controlnet-mlsd
                 "normal",
                 "pose",
                 "scribble",

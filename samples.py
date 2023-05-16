@@ -77,6 +77,14 @@ def main():
         seed=42,
         steps=30,
     )
+    gen(
+        "sample.hough.png",
+        structure="hough",
+        prompt="mid century modern bedroom",
+        image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        seed=42,
+        steps=30,
+    )
 
 
 if __name__ == "__main__":
