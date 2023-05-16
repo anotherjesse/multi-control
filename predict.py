@@ -44,13 +44,27 @@ AUX_IDS = {
     "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
 }
 
+SCHEDULERS = {
+    "DDIM": DDIMScheduler,
+    "DPMSolverMultistep": DPMSolverMultistepScheduler,
+    "HeunDiscrete": HeunDiscreteScheduler,
+    "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler,
+    "K_EULER": EulerDiscreteScheduler,
+    "KLMS": LMSDiscreteScheduler,
+    "PNDM": PNDMScheduler,
+    "UniPCMultistep": UniPCMultistepScheduler,
+}
+
+
 SD15_WEIGHTS = "weights"
 CONTROLNET_CACHE = "controlnet-cache"
 PROCESSORS_CACHE = "processors-cache"
 MISSING_WEIGHTS = []
 
 if not os.path.exists(CONTROLNET_CACHE) or not os.path.exists(PROCESSORS_CACHE):
-    print("controlnet weights missing, use `cog run python script/download_weights` to download")
+    print(
+        "controlnet weights missing, use `cog run python script/download_weights` to download"
+    )
     MISSING_WEIGHTS.append("controlnet")
 
 if not os.path.exists(SD15_WEIGHTS):
@@ -127,7 +141,7 @@ class Predictor(BasePredictor):
                 "canny",
                 "depth",
                 "hed",
-                "hough", # FIXME(ja): why is this called hough if it is m-lsd? the original controlnet is called https://huggingface.co/lllyasviel/sd-controlnet-mlsd
+                "hough",  # FIXME(ja): why is this called hough if it is m-lsd? the original controlnet is called https://huggingface.co/lllyasviel/sd-controlnet-mlsd
                 "normal",
                 "pose",
                 "scribble",
@@ -147,16 +161,7 @@ class Predictor(BasePredictor):
         ),
         scheduler: str = Input(
             default="DPMSolverMultistep",
-            choices=[
-                "DDIM",
-                "DPMSolverMultistep",
-                "HeunDiscrete",
-                "K_EULER_ANCESTRAL",
-                "K_EULER",
-                "KLMS",
-                "PNDM",
-                "UniPCMultistep",
-            ],
+            choices=SCHEDULERS.keys(),
             description="Choose a scheduler.",
         ),
         steps: int = Input(description="Steps", default=20),
@@ -192,10 +197,10 @@ class Predictor(BasePredictor):
     ) -> List[Path]:
         if len(MISSING_WEIGHTS) > 0:
             raise Exception("missing weights")
-        
+
         pipe = self.select_pipe(structure)
         pipe.enable_xformers_memory_efficient_attention()
-        pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
+        pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
 
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
@@ -281,15 +286,3 @@ class Predictor(BasePredictor):
         color_seg = color_seg.astype(np.uint8)
         image = Image.fromarray(color_seg)
         return image
-
-def make_scheduler(name, config):
-    return {
-        "DDIM": DDIMScheduler.from_config(config),
-        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
-        "HeunDiscrete": HeunDiscreteScheduler.from_config(config),
-        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
-        "K_EULER": EulerDiscreteScheduler.from_config(config),
-        "KLMS": LMSDiscreteScheduler.from_config(config),
-        "PNDM": PNDMScheduler.from_config(config),
-        "UniPCMultistep": UniPCMultistepScheduler.from_config(config),
-    }[name]
