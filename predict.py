@@ -41,7 +41,7 @@ AUX_IDS = {
     "scribble": "fusing/stable-diffusion-v1-5-controlnet-scribble",
     "mlsd": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
     "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
-    "openpose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
+    "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
 }
 
 SD15_WEIGHTS = "weights"
@@ -109,7 +109,7 @@ class Predictor(BasePredictor):
         )
 
         # Pose
-        self.open_pose = OpenposeDetector.from_pretrained(
+        self.pose = OpenposeDetector.from_pretrained(
             "lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE
         )
 
@@ -253,7 +253,7 @@ class Predictor(BasePredictor):
         elif structure == "normal":
             input_image = self.midas(image, depth_and_normal=True)[1]
         elif structure == "pose":
-            input_image = self.open_pose(image)
+            input_image = self.pose(image)
         elif structure == "scribble":
             input_image = self.hed(image, scribble=True)
         elif structure == "seg":
