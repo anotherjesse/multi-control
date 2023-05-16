@@ -14,6 +14,14 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     ControlNetModel,
     StableDiffusionPipeline,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+    UniPCMultistepScheduler,
 )
 from controlnet_aux import (
     HEDdetector,
@@ -39,19 +47,26 @@ AUX_IDS = {
 SD15_WEIGHTS = "weights"
 CONTROLNET_CACHE = "controlnet-cache"
 PROCESSORS_CACHE = "processors-cache"
+MISSING_WEIGHTS = []
 
-if not os.path.exists(CONTROLNET_CACHE):
-    print("controlnet cache missing, use `cog run script/download_weights` to download")
+if not os.path.exists(CONTROLNET_CACHE) or not os.path.exists(PROCESSORS_CACHE):
+    print("controlnet weights missing, use `cog run python script/download_weights` to download")
+    MISSING_WEIGHTS.append("controlnet")
 
 if not os.path.exists(SD15_WEIGHTS):
     print(
         "sd15 weights missing, use `cog run python` and then load and save_pretrained('weights')"
     )
+    MISSING_WEIGHTS.append("sd15")
 
 
 class Predictor(BasePredictor):
     def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
+        if len(MISSING_WEIGHTS) > 0:
+            print("skipping setup... missing weights: ", MISSING_WEIGHTS)
+            return
+
         print("Loading pipeline...")
         st = time.time()
 
@@ -105,6 +120,7 @@ class Predictor(BasePredictor):
         self,
         image: Path = Input(description="Input image"),
         prompt: str = Input(description="Prompt for the model"),
+        # FIXME: support multiple structures by having inputs canny_image, depth_image, ...
         structure: str = Input(
             description="Structure to condition on",
             choices=[
@@ -128,6 +144,20 @@ class Predictor(BasePredictor):
             choices=["256", "512", "768"],
             default="512",
         ),
+        scheduler: str = Input(
+            default="DPMSolverMultistep",
+            choices=[
+                "DDIM",
+                "DPMSolverMultistep",
+                "HeunDiscrete",
+                "K_EULER_ANCESTRAL",
+                "K_EULER",
+                "KLMS",
+                "PNDM",
+                "UniPCMultistep",
+            ],
+            description="Choose a scheduler.",
+        ),
         steps: int = Input(description="Steps", default=20),
         scale: float = Input(
             description="Scale for classifier-free guidance",
@@ -140,11 +170,7 @@ class Predictor(BasePredictor):
             description="Controls the amount of noise that is added to the input data during the denoising diffusion process. Higher value -> more noise",
             default=0.0,
         ),
-        a_prompt: str = Input(  # FIXME
-            description="Additional text to be appended to prompt",
-            default="Best quality, extremely detailed",
-        ),
-        n_prompt: str = Input(  # FIXME
+        negative_prompt: str = Input(  # FIXME
             description="Negative prompt",
             default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
         ),
@@ -163,8 +189,12 @@ class Predictor(BasePredictor):
             le=255,
         ),
     ) -> List[Path]:
+        if len(MISSING_WEIGHTS) > 0:
+            raise Exception("missing weights")
+        
         pipe = self.select_pipe(structure)
         pipe.enable_xformers_memory_efficient_attention()
+        pipe.scheduler = make_scheduler(scheduler, pipe.scheduler.config)
 
         num_samples = int(num_samples)
         image_resolution = int(image_resolution)
@@ -181,8 +211,6 @@ class Predictor(BasePredictor):
             high_threshold=high_threshold,
         )
 
-        # Why a_prompt?
-        prompt = prompt + ", " + a_prompt
         outputs = pipe(
             prompt,
             input_image,
@@ -191,7 +219,7 @@ class Predictor(BasePredictor):
             num_inference_steps=steps,
             guidance_scale=scale,
             eta=eta,
-            negative_prompt=n_prompt,
+            negative_prompt=negative_prompt,
             num_images_per_prompt=num_samples,
         )
         output_paths = []
@@ -251,3 +279,15 @@ class Predictor(BasePredictor):
         color_seg = color_seg.astype(np.uint8)
         image = Image.fromarray(color_seg)
         return image
+
+def make_scheduler(name, config):
+    return {
+        "DDIM": DDIMScheduler.from_config(config),
+        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
+        "HeunDiscrete": HeunDiscreteScheduler.from_config(config),
+        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
+        "K_EULER": EulerDiscreteScheduler.from_config(config),
+        "KLMS": LMSDiscreteScheduler.from_config(config),
+        "PNDM": PNDMScheduler.from_config(config),
+        "UniPCMultistep": UniPCMultistepScheduler.from_config(config),
+    }[name]
