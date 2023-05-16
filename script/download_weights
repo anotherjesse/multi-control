@@ -6,6 +6,7 @@ import sys
 
 from diffusers import ControlNetModel
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector, MidasDetector
+from transformers import AutoImageProcessor, UperNetForSemanticSegmentation
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
@@ -31,5 +32,10 @@ for name, model in AUX_IDS.items():
     aux.save_pretrained(os.path.join(CONTROLNET_CACHE, name))
 
 MidasDetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
+AutoImageProcessor.from_pretrained("openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE)
+UperNetForSemanticSegmentation.from_pretrained("openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE)
+HEDdetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
+MLSDdetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
+OpenposeDetector.from_pretrained("lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE)
 
 shutil.rmtree(TMP_CACHE)
