@@ -27,10 +27,10 @@ from controlnet_aux import (
     HEDdetector,
     OpenposeDetector,
     MLSDdetector,
-    MidasDetector,
     CannyDetector,
 )
 from controlnet_aux.util import ade_palette
+from midas_hack import MidasDetector
 
 
 AUX_IDS = {
