@@ -85,6 +85,14 @@ def main():
         seed=42,
         steps=30,
     )
+    gen(
+        "sample.scribble.png",
+        structure="scribble",
+        prompt="rainbow turtle, psychedelic, best quality, extremely detailed",
+        image="https://replicate.delivery/pbxt/IJE6zP4jtdwxe7SffC7te9DPHWHW99dMXED5AWamlBNcvxn0/user_1.png",
+        seed=42,
+        steps=30,
+    )
 
 
 if __name__ == "__main__":
