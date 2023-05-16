@@ -96,7 +96,6 @@ class Predictor(BasePredictor):
                 local_files_only=True,
             ).to("cuda")
 
-        # Canny
         self.canny = CannyDetector()
 
         # Depth + Normal
@@ -104,7 +103,6 @@ class Predictor(BasePredictor):
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
-        # HED
         self.hed = HEDdetector.from_pretrained(
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
@@ -114,7 +112,6 @@ class Predictor(BasePredictor):
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
-        # Seg
         self.controlnet_seg_processor = AutoImageProcessor.from_pretrained(
             "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
         )
@@ -122,7 +119,6 @@ class Predictor(BasePredictor):
             "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
         )
 
-        # Pose
         self.pose = OpenposeDetector.from_pretrained(
             "lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE
         )
@@ -141,7 +137,7 @@ class Predictor(BasePredictor):
                 "canny",
                 "depth",
                 "hed",
-                "hough",  # FIXME(ja): why is this called hough if it is m-lsd? the original controlnet is called https://huggingface.co/lllyasviel/sd-controlnet-mlsd
+                "hough",  # FIXME(ja): why do we call it hough when the controlnet is called mlsd: https://huggingface.co/lllyasviel/sd-controlnet-mlsd
                 "normal",
                 "pose",
                 "scribble",
