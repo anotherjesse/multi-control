@@ -151,12 +151,12 @@ class Predictor(BasePredictor):
             default=1,
         ),
         image_resolution: int = Input(
-            description="Resolution of image (square)",
+            description="Resolution of image (smallest dimension)",
             choices=[256, 512, 768],
             default=512,
         ),
         scheduler: str = Input(
-            default="DPMSolverMultistep",
+            default="DDIM",
             choices=SCHEDULERS.keys(),
             description="Choose a scheduler.",
         ),
@@ -211,13 +211,23 @@ class Predictor(BasePredictor):
             high_threshold=high_threshold,
         )
 
+        scale = float(image_resolution) / (min(input_image.size))
+        
+        def quick_rescale(dim, scale):
+            """quick rescale to a multiple of 64, as per original controlnet"""
+            dim *= scale
+            return int(np.round(dim / 64.0)) * 64
+        
+        width = quick_rescale(input_image.size[0], scale)
+        height = quick_rescale(input_image.size[1], scale)
+
         generator = torch.Generator("cuda").manual_seed(seed)
 
         outputs = pipe(
             prompt,
             input_image,
-            height=image_resolution,
-            width=image_resolution,
+            height=height,
+            width=width,
             num_inference_steps=steps,
             guidance_scale=scale,
             eta=eta,
