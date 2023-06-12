@@ -3,25 +3,35 @@
 import os
 import shutil
 import sys
+import torch
 
-from diffusers import ControlNetModel
+from diffusers import ControlNetModel, StableDiffusionPipeline
 from controlnet_aux import HEDdetector, OpenposeDetector, MLSDdetector, MidasDetector
 from transformers import AutoImageProcessor, UperNetForSemanticSegmentation
 
 # append project directory to path so predict.py can be imported
 sys.path.append(".")
 
-from predict import CONTROLNET_CACHE, PROCESSORS_CACHE, AUX_IDS
+from predict import CONTROLNET_CACHE, PROCESSORS_CACHE, AUX_IDS, SD15_WEIGHTS
 
 if os.path.exists(CONTROLNET_CACHE):
     shutil.rmtree(CONTROLNET_CACHE)
 os.makedirs(CONTROLNET_CACHE)
+
+if os.path.exists(SD15_WEIGHTS):
+    shutil.rmtree(SD15_WEIGHTS)
+os.makedirs(SD15_WEIGHTS)
 
 TMP_CACHE = "tmp_cache"
 
 if os.path.exists(TMP_CACHE):
     shutil.rmtree(TMP_CACHE)
 os.makedirs(TMP_CACHE)
+
+p = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, cache_dir=TMP_CACHE
+        )
+p.save_pretrained(SD15_WEIGHTS)
 
 for name, model in AUX_IDS.items():
     aux = ControlNetModel.from_pretrained(
