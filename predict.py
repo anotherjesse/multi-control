@@ -42,6 +42,7 @@ AUX_IDS = {
     "hough": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
     "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
     "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
+    'qr': 'DionTimmer/controlnet_qrcode-control_v1p_sd15',
 }
 
 SCHEDULERS = {
@@ -136,6 +137,9 @@ class Predictor(BasePredictor):
 
     def scribble_preprocess(self, img):
         return self.hed(img, scribble=True)
+    
+    def qr_preprocess(self, img):
+        return img
 
     def seg_preprocessor(self, image):
         image = image.convert("RGB")
@@ -258,6 +262,14 @@ class Predictor(BasePredictor):
             description="Conditioning scale for seg controlnet",
             default=1,
         ),
+        qr_image: Path = Input(
+            description="Control image for qr controlnet", default=None
+        ),
+        qr_conditioning_scale: float = Input(
+            description="Conditioning scale for qr controlnet",
+            default=1,
+        ),
+
         num_samples: int = Input(
             description="Number of samples (higher values may OOM)",
             ge=1,
@@ -322,6 +334,7 @@ class Predictor(BasePredictor):
                 "pose": [pose_image, pose_conditioning_scale],
                 "scribble": [scribble_image, scribble_conditioning_scale],
                 "seg": [seg_image, seg_conditioning_scale],
+                "qr": [qr_image, qr_conditioning_scale],
             },
             low_threshold=low_threshold,
             high_threshold=high_threshold,

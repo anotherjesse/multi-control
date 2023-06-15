@@ -43,6 +43,15 @@ def main():
         steps=30,
     )
     gen(
+        "sample.qr.png",
+        prompt="A film still of a kraken, reconciliation, 8mm film, traditional color grading, cinemascope, set in 1878",
+        qr_image="https://github.com/anotherjesse/dream-templates/assets/27/c5df2f7c-7a0c-43ad-93d6-921af0759190",
+        qr_conditioning_scale=1.5,
+        seed=42,
+        scheduler="K_EULER",
+        steps=50,
+    )
+    gen(
         "sample.canny.guess.png",
         prompt="",
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
