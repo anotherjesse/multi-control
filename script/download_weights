@@ -23,6 +23,10 @@ if os.path.exists(SD15_WEIGHTS):
     shutil.rmtree(SD15_WEIGHTS)
 os.makedirs(SD15_WEIGHTS)
 
+if os.path.exists(SD15_WEIGHTS):
+    shutil.rmtree(SD15_WEIGHTS)
+os.makedirs(SD15_WEIGHTS)
+
 TMP_CACHE = "tmp_cache"
 
 if os.path.exists(TMP_CACHE):
@@ -53,11 +57,7 @@ HEDdetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
 MLSDdetector.from_pretrained("lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE)
 OpenposeDetector.from_pretrained("lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE)
 
-shutil.rmtree(TMP_CACHE)
-
-if os.path.exists(SD15_WEIGHTS):
-    shutil.rmtree(SD15_WEIGHTS)
-os.makedirs(SD15_WEIGHTS)
-
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, cache_dir=TMP_CACHE)
 pipe.save_pretrained(SD15_WEIGHTS)
+
+shutil.rmtree(TMP_CACHE)

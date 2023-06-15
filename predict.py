@@ -96,14 +96,14 @@ class Predictor(BasePredictor):
                 local_files_only=True,
             ).to("cuda")
 
-        self.canny = CannyDetector()
+        self.canny_preprocessor = CannyDetector()
 
         # Depth + Normal
         self.midas = MidasDetector.from_pretrained(
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
-        self.hed = HEDdetector.from_pretrained(
+        self.hed_preprocessor = HEDdetector.from_pretrained(
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
@@ -119,11 +119,73 @@ class Predictor(BasePredictor):
             "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
         )
 
-        self.pose = OpenposeDetector.from_pretrained(
+        self.pose_preprocessor = OpenposeDetector.from_pretrained(
             "lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE
         )
 
         print("Setup complete in %f" % (time.time() - st))
+
+    def depth_preprocess(self, img):
+        return self.midas(img)
+
+    def hough_preprocess(self, img):
+        return self.mlsd(img)
+
+    def normal_preprocess(self, img):
+        return self.midas(img, depth_and_normal=True)[1]
+
+    def scribble_preprocess(self, img):
+        return self.hed(img, scribble=True)
+
+    def seg_preprocessor(self, image):
+        image = image.convert("RGB")
+        pixel_values = self.controlnet_seg_processor(
+            image, return_tensors="pt"
+        ).pixel_values
+        with torch.no_grad():
+            outputs = self.controlnet_seg_segmentor(pixel_values)
+        seg = self.controlnet_seg_processor.post_process_semantic_segmentation(
+            outputs, target_sizes=[image.size[::-1]]
+        )[0]
+        color_seg = np.zeros(
+            (seg.shape[0], seg.shape[1], 3), dtype=np.uint8
+        )  # height, width, 3
+        palette = np.array(ade_palette())
+        for label, color in enumerate(palette):
+            color_seg[seg == label, :] = color
+        color_seg = color_seg.astype(np.uint8)
+        image = Image.fromarray(color_seg)
+        return image
+
+    def build_pipe(self, inputs, low_threshold=100, high_threshold=200):
+        control_nets = []
+        processed_control_images = []
+        conditioning_scales = []
+
+        for name, [image, conditioning_scale] in inputs.items():
+            if image is None:
+                continue
+            control_nets.append(self.controlnets[name])
+            img = Image.open(image)
+            if name == "canny":
+                img = self.canny_preprocessor(img, low_threshold, high_threshold)
+            else:
+                img = getattr(self,  "{}_preprocess".format(name))(img)
+
+            processed_control_images.append(img)
+            conditioning_scales.append(conditioning_scale)
+
+        pipe = StableDiffusionControlNetPipeline(
+            vae=self.pipe.vae,
+            text_encoder=self.pipe.text_encoder,
+            tokenizer=self.pipe.tokenizer,
+            unet=self.pipe.unet,
+            scheduler=self.pipe.scheduler,
+            safety_checker=None, # self.pipe.safety_checker,
+            feature_extractor=self.pipe.feature_extractor,
+            controlnet=control_nets,
+        )
+        return pipe, processed_control_images, conditioning_scales
 
     @torch.inference_mode()
     def predict(
@@ -201,7 +263,7 @@ class Predictor(BasePredictor):
             description="Choose a scheduler.",
         ),
         steps: int = Input(description="Steps", default=20),
-        scale: float = Input(
+        guidance_scale: float = Input(
             description="Scale for classifier-free guidance",
             default=9.0,
             ge=0.1,
@@ -273,7 +335,7 @@ class Predictor(BasePredictor):
             height=height,
             width=width,
             num_inference_steps=steps,
-            guidance_scale=scale,
+            guidance_scale=guidance_scale,
             eta=eta,
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_samples,
@@ -286,83 +348,3 @@ class Predictor(BasePredictor):
             sample.save(output_path)
             output_paths.append(Path(output_path))
         return output_paths
-
-    def build_pipe(self, inputs, low_threshold=100, high_threshold=200):
-        control_nets = []
-        processed_control_images = []
-        conditioning_scales = []
-
-        if inputs["canny"][0] is not None:
-            control_nets.append(self.controlnets["canny"])
-            img = Image.open(inputs["canny"][0])
-            processed_control_images.append(
-                self.canny(img, low_threshold, high_threshold)
-            )
-            conditioning_scales.append(inputs["canny"][1])
-        if inputs["depth"][0] is not None:
-            control_nets.append(self.controlnets["depth"])
-            img = Image.open(inputs["depth"][0])
-            processed_control_images.append(self.midas(img))
-            conditioning_scales.append(inputs["depth"][1])
-        if inputs["hed"][0] is not None:
-            control_nets.append(self.controlnets["hed"])
-            img = Image.open(inputs["hed"][0])
-            processed_control_images.append(self.hed(img))
-            conditioning_scales.append(inputs["hed"][1])
-        if inputs["hough"][0] is not None:
-            control_nets.append(self.controlnets["hough"])
-            img = Image.open(inputs["hough"][0])
-            processed_control_images.append(self.mlsd(img))
-            conditioning_scales.append(inputs["hough"][1])
-        if inputs["normal"][0] is not None:
-            control_nets.append(self.controlnets["normal"])
-            img = Image.open(inputs["normal"][0])
-            processed_control_images.append(self.midas(img, depth_and_normal=True)[1])
-            conditioning_scales.append(inputs["normal"][1])
-        if inputs["pose"][0] is not None:
-            control_nets.append(self.controlnets["pose"])
-            img = Image.open(inputs["pose"][0])
-            processed_control_images.append(self.pose(img))
-            conditioning_scales.append(inputs["pose"][1])
-        if inputs["scribble"][0] is not None:
-            control_nets.append(self.controlnets["scribble"])
-            img = Image.open(inputs["scribble"][0])
-            processed_control_images.append(self.hed(img, scribble=True))
-            conditioning_scales.append(inputs["scribble"][1])
-        if inputs["seg"][0] is not None:
-            control_nets.append(self.controlnets["seg"])
-            img = Image.open(inputs["seg"][0])
-            processed_control_images.append(self.seg_preprocessor(img))
-            conditioning_scales.append(inputs["seg"][1])
-
-        pipe = StableDiffusionControlNetPipeline(
-            vae=self.pipe.vae,
-            text_encoder=self.pipe.text_encoder,
-            tokenizer=self.pipe.tokenizer,
-            unet=self.pipe.unet,
-            scheduler=self.pipe.scheduler,
-            safety_checker=self.pipe.safety_checker,
-            feature_extractor=self.pipe.feature_extractor,
-            controlnet=control_nets,
-        )
-        return pipe, processed_control_images, conditioning_scales
-
-    def seg_preprocessor(self, image):
-        image = image.convert("RGB")
-        pixel_values = self.controlnet_seg_processor(
-            image, return_tensors="pt"
-        ).pixel_values
-        with torch.no_grad():
-            outputs = self.controlnet_seg_segmentor(pixel_values)
-        seg = self.controlnet_seg_processor.post_process_semantic_segmentation(
-            outputs, target_sizes=[image.size[::-1]]
-        )[0]
-        color_seg = np.zeros(
-            (seg.shape[0], seg.shape[1], 3), dtype=np.uint8
-        )  # height, width, 3
-        palette = np.array(ade_palette())
-        for label, color in enumerate(palette):
-            color_seg[seg == label, :] = color
-        color_seg = color_seg.astype(np.uint8)
-        image = Image.fromarray(color_seg)
-        return image
