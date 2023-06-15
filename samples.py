@@ -30,6 +30,12 @@ def gen(output_fn, **kwargs):
 
 def main():
     gen(
+        "sample.none.png",
+        prompt="taylor swift in a mid century modern bedroom",
+        seed=42,
+        steps=30,
+    )
+    gen(
         "sample.canny.png",
         prompt="taylor swift in a mid century modern bedroom",
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
@@ -37,9 +43,25 @@ def main():
         steps=30,
     )
     gen(
+        "sample.canny.guess.png",
+        prompt="",
+        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        guess_mode=True,
+        seed=42,
+        steps=30,
+    )
+    gen(
         "sample.hough.png",
         prompt="taylor swift in a mid century modern bedroom",
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        seed=42,
+        steps=30,
+    )
+    gen(
+        "sample.hough.guess.png",
+        prompt="",
+        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        guess_mode=True,
         seed=42,
         steps=30,
     )
@@ -52,16 +74,24 @@ def main():
         steps=30,
     )
     gen(
+        "sample.both.guess.png",
+        prompt="",
+        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        guess_mode=True,
+        seed=42,
+        steps=30,
+    )
+    gen(
         "sample.scaled.png",
         prompt="taylor swift in a mid century modern bedroom",
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         hough_conditioning_scale=0.6,
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
-        canny_conditioning_scale=0.9,
+        canny_conditioning_scale=0.8,
         seed=42,
         steps=30,
     )
-
 
 if __name__ == "__main__":
     main()

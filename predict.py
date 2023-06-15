@@ -157,7 +157,9 @@ class Predictor(BasePredictor):
         image = Image.fromarray(color_seg)
         return image
 
-    def build_pipe(self, inputs, low_threshold=100, high_threshold=200):
+    def build_pipe(
+        self, inputs, low_threshold=100, high_threshold=200, guess_mode=False
+    ):
         control_nets = []
         processed_control_images = []
         conditioning_scales = []
@@ -170,22 +172,32 @@ class Predictor(BasePredictor):
             if name == "canny":
                 img = self.canny_preprocessor(img, low_threshold, high_threshold)
             else:
-                img = getattr(self,  "{}_preprocess".format(name))(img)
+                img = getattr(self, "{}_preprocess".format(name))(img)
 
             processed_control_images.append(img)
             conditioning_scales.append(conditioning_scale)
 
-        pipe = StableDiffusionControlNetPipeline(
-            vae=self.pipe.vae,
-            text_encoder=self.pipe.text_encoder,
-            tokenizer=self.pipe.tokenizer,
-            unet=self.pipe.unet,
-            scheduler=self.pipe.scheduler,
-            safety_checker=None, # self.pipe.safety_checker,
-            feature_extractor=self.pipe.feature_extractor,
-            controlnet=control_nets,
-        )
-        return pipe, processed_control_images, conditioning_scales
+        if len(control_nets) == 0:
+            pipe = self.pipe
+            kwargs = {}
+        else:
+            pipe = StableDiffusionControlNetPipeline(
+                vae=self.pipe.vae,
+                text_encoder=self.pipe.text_encoder,
+                tokenizer=self.pipe.tokenizer,
+                unet=self.pipe.unet,
+                scheduler=self.pipe.scheduler,
+                safety_checker=None,  # self.pipe.safety_checker,
+                feature_extractor=self.pipe.feature_extractor,
+                controlnet=control_nets,
+            )
+            kwargs = {
+                "image": processed_control_images,
+                "controlnet_conditioning_scale": conditioning_scales,
+                "guess_mode": guess_mode,
+            }
+
+        return pipe, kwargs
 
     @torch.inference_mode()
     def predict(
@@ -292,11 +304,15 @@ class Predictor(BasePredictor):
             ge=1,
             le=255,
         ),
+        guess_mode: bool = Input(
+            description="In this mode, the ControlNet encoder will try best to recognize the content of the input image even if you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.",
+            default=False,
+        ),
     ) -> List[Path]:
         if len(MISSING_WEIGHTS) > 0:
             raise Exception("missing weights")
 
-        pipe, processed_control_images, controlnet_conditioning_scale = self.build_pipe(
+        pipe, kwargs = self.build_pipe(
             {
                 "canny": [canny_image, canny_conditioning_scale],
                 "depth": [depth_image, depth_conditioning_scale],
@@ -309,6 +325,7 @@ class Predictor(BasePredictor):
             },
             low_threshold=low_threshold,
             high_threshold=high_threshold,
+            guess_mode=guess_mode,
         )
         pipe.enable_xformers_memory_efficient_attention()
         pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
@@ -317,21 +334,24 @@ class Predictor(BasePredictor):
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
 
-        scale = float(image_resolution) / (min(processed_control_images[0].size))
+        if "image" in kwargs:
+            img = kwargs["image"][0]
+            scale = float(image_resolution) / (min(img.size))
 
-        def quick_rescale(dim, scale):
-            """quick rescale to a multiple of 64, as per original controlnet"""
-            dim *= scale
-            return int(np.round(dim / 64.0)) * 64
+            def quick_rescale(dim):
+                """quick rescale to a multiple of 64, as per original controlnet"""
+                dim *= scale
+                return int(np.round(dim / 64.0)) * 64
 
-        width = quick_rescale(processed_control_images[0].size[0], scale)
-        height = quick_rescale(processed_control_images[0].size[1], scale)
+            width = quick_rescale(img.size[0])
+            height = quick_rescale(img.size[1])
+        else:
+            width = height = image_resolution
 
         generator = torch.Generator("cuda").manual_seed(seed)
 
         outputs = pipe(
             prompt,
-            processed_control_images,
             height=height,
             width=width,
             num_inference_steps=steps,
@@ -340,7 +360,7 @@ class Predictor(BasePredictor):
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_samples,
             generator=generator,
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
+            **kwargs,
         )
         output_paths = []
         for i, sample in enumerate(outputs.images):
