@@ -75,6 +75,22 @@ def main():
         steps=30,
     )
     gen(
+        "sample.normal.png",
+        prompt="",
+        normal_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        guess_mode=True,
+        seed=42,
+        steps=30,
+    )
+    gen(
+        "sample.depth.png",
+        prompt="",
+        depth_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        guess_mode=True,
+        seed=42,
+        steps=30,
+    )
+    gen(
         "sample.both.png",
         prompt="taylor swift in a mid century modern bedroom",
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
@@ -101,6 +117,32 @@ def main():
         seed=42,
         steps=30,
     )
+    gen(
+        "sample.seg.png",
+        prompt="modern bedroom with plants",
+        seg_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        seed=42,
+    )
+    gen(
+        "sample.hed.png",
+        prompt="modern bedroom with plants",
+        hed_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        seed=42,
+    )
+    gen(
+        "sample.pose.png",
+        prompt="a man in a suit by van gogh",
+        pose_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/human_512x512.png",
+        seed=42,
+    )
+    gen(
+        "sample.scribble.png",
+        prompt="painting of cjw by van gogh",
+        scribble_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_scribble.png",
+        seed=42,
+    )
+
+
 
 if __name__ == "__main__":
     main()

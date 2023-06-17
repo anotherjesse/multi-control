@@ -97,14 +97,14 @@ class Predictor(BasePredictor):
                 local_files_only=True,
             ).to("cuda")
 
-        self.canny_preprocessor = CannyDetector()
+        self.canny = CannyDetector()
 
         # Depth + Normal
         self.midas = MidasDetector.from_pretrained(
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
-        self.hed_preprocessor = HEDdetector.from_pretrained(
+        self.hed = HEDdetector.from_pretrained(
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
@@ -113,18 +113,21 @@ class Predictor(BasePredictor):
             "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
         )
 
-        self.controlnet_seg_processor = AutoImageProcessor.from_pretrained(
+        self.seg_processor = AutoImageProcessor.from_pretrained(
             "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
         )
-        self.controlnet_seg_segmentor = UperNetForSemanticSegmentation.from_pretrained(
+        self.seg_segmentor = UperNetForSemanticSegmentation.from_pretrained(
             "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
         )
 
-        self.pose_preprocessor = OpenposeDetector.from_pretrained(
+        self.pose = OpenposeDetector.from_pretrained(
             "lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE
         )
 
         print("Setup complete in %f" % (time.time() - st))
+
+    def canny_preprocess(self, img):
+        return self.canny(img)
 
     def depth_preprocess(self, img):
         return self.midas(img)
@@ -140,15 +143,21 @@ class Predictor(BasePredictor):
     
     def qr_preprocess(self, img):
         return img
+    
+    def pose_preprocess(self, img):
+        return self.pose(img)
+    
+    def hed_preprocess(self, img):
+        return self.hed(img)
 
-    def seg_preprocessor(self, image):
+    def seg_preprocess(self, image):
         image = image.convert("RGB")
-        pixel_values = self.controlnet_seg_processor(
+        pixel_values = self.seg_processor(
             image, return_tensors="pt"
         ).pixel_values
         with torch.no_grad():
-            outputs = self.controlnet_seg_segmentor(pixel_values)
-        seg = self.controlnet_seg_processor.post_process_semantic_segmentation(
+            outputs = self.seg_segmentor(pixel_values)
+        seg = self.seg_processor.post_process_semantic_segmentation(
             outputs, target_sizes=[image.size[::-1]]
         )[0]
         color_seg = np.zeros(
@@ -174,7 +183,7 @@ class Predictor(BasePredictor):
             control_nets.append(self.controlnets[name])
             img = Image.open(image)
             if name == "canny":
-                img = self.canny_preprocessor(img, low_threshold, high_threshold)
+                img = self.canny_preprocess(img, low_threshold, high_threshold)
             else:
                 img = getattr(self, "{}_preprocess".format(name))(img)
 
