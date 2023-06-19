@@ -22,7 +22,7 @@ def gen(output_fn, **kwargs):
         print("Error!")
         print("input:", kwargs)
         print(data["logs"])
-        sys.exit(1)
+        # sys.exit(1)
 
     with open(output_fn, "wb") as f:
         f.write(data)
@@ -30,7 +30,7 @@ def gen(output_fn, **kwargs):
 
 def main():
     gen(
-        "sample.none.png",
+        "sample.txt2img.png",
         prompt="taylor swift in a mid century modern bedroom",
         seed=42,
         num_inference_steps=30,
@@ -38,15 +38,17 @@ def main():
     gen(
         "sample.canny.png",
         prompt="taylor swift in a mid century modern bedroom",
-        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        controlnet_1="canny",
+        controlnet_1_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         seed=42,
         num_inference_steps=30,
     )
     gen(
         "sample.qr.png",
         prompt="A film still of a kraken, reconciliation, 8mm film, traditional color grading, cinemascope, set in 1878",
-        qr_image="https://github.com/anotherjesse/dream-templates/assets/27/c5df2f7c-7a0c-43ad-93d6-921af0759190",
-        qr_conditioning_scale=1.5,
+        controlnet_1="qr",
+        controlnet_1_image="https://github.com/anotherjesse/dream-templates/assets/27/c5df2f7c-7a0c-43ad-93d6-921af0759190",
+        controlnet_1_conditioning_scale=1.5,
         seed=42,
         scheduler="K_EULER",
         num_inference_steps=50,
@@ -54,7 +56,8 @@ def main():
     gen(
         "sample.canny.guess.png",
         prompt="",
-        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        controlnet_1="canny",
+        controlnet_1_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         guess_mode=True,
         seed=42,
         num_inference_steps=30,
@@ -62,14 +65,16 @@ def main():
     gen(
         "sample.hough.png",
         prompt="taylor swift in a mid century modern bedroom",
-        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="hough",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         seed=42,
         num_inference_steps=30,
     )
     gen(
         "sample.hough.guess.png",
         prompt="",
-        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="hough",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
         num_inference_steps=30,
@@ -77,7 +82,8 @@ def main():
     gen(
         "sample.normal.png",
         prompt="",
-        normal_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="normal",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
         num_inference_steps=30,
@@ -85,24 +91,29 @@ def main():
     gen(
         "sample.depth.png",
         prompt="",
-        depth_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="depth",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
         num_inference_steps=30,
     )
     gen(
-        "sample.both.png",
+        "sample.two.png",
         prompt="taylor swift in a mid century modern bedroom",
-        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
-        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        controlnet_1="hough",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_2="canny",
+        controlnet_2_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         seed=42,
         num_inference_steps=30,
     )
     gen(
         "sample.both.guess.png",
         prompt="",
-        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
-        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        controlnet_1="hough",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_2="canny",
+        controlnet_2_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         guess_mode=True,
         seed=42,
         num_inference_steps=30,
@@ -110,35 +121,41 @@ def main():
     gen(
         "sample.scaled.png",
         prompt="taylor swift in a mid century modern bedroom",
-        hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
-        hough_conditioning_scale=0.6,
-        canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
-        canny_conditioning_scale=0.8,
+        controlnet_1="hough",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1_conditioning_scale=0.6,
+        controlnet_2="canny",
+        controlnet_2_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
+        controlnet_2_conditioning_scale=0.8,
         seed=42,
         num_inference_steps=30,
     )
     gen(
         "sample.seg.png",
         prompt="modern bedroom with plants",
-        seg_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="seg",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         seed=42,
     )
     gen(
         "sample.hed.png",
         prompt="modern bedroom with plants",
-        hed_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
+        controlnet_1="hed",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         seed=42,
     )
     gen(
         "sample.pose.png",
         prompt="a man in a suit by van gogh",
-        pose_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/human_512x512.png",
+        controlnet_1="pose",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/human_512x512.png",
         seed=42,
     )
     gen(
         "sample.scribble.png",
         prompt="painting of cjw by van gogh",
-        scribble_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_scribble.png",
+        controlnet_1="scribble",
+        controlnet_1_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/converted/control_vermeer_scribble.png",
         seed=42,
     )
 

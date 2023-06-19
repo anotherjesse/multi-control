@@ -126,8 +126,8 @@ class Predictor(BasePredictor):
 
         print("Setup complete in %f" % (time.time() - st))
 
-    def canny_preprocess(self, img):
-        return self.canny(img)
+    def canny_preprocess(self, img, low_threshold=100, high_threshold=200):
+        return self.canny(img, low_threshold, high_threshold)
 
     def depth_preprocess(self, img):
         return self.midas(img)
@@ -175,10 +175,12 @@ class Predictor(BasePredictor):
         processed_control_images = []
         conditioning_scales = []
 
-        for input in inputs.items():
+        print(inputs)
+        for input in inputs:
             if input["image"] is None or input["name"] is None:
                 continue
             name = input["name"]
+            print("adding controlnet: ", name)
             control_nets.append(self.controlnets[name])
             image = input["image"]
             img = Image.open(image)
