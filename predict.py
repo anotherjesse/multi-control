@@ -200,7 +200,7 @@ class Predictor(BasePredictor):
                 tokenizer=self.pipe.tokenizer,
                 unet=self.pipe.unet,
                 scheduler=self.pipe.scheduler,
-                safety_checker=None,  # self.pipe.safety_checker,
+                safety_checker=self.pipe.safety_checker,
                 feature_extractor=self.pipe.feature_extractor,
                 controlnet=control_nets,
             )
@@ -278,11 +278,10 @@ class Predictor(BasePredictor):
             description="Conditioning scale for qr controlnet",
             default=1,
         ),
-
-        num_samples: int = Input(
-            description="Number of samples (higher values may OOM)",
+        num_outputs: int = Input(
+            description="Number of images to generate",
             ge=1,
-            le=4,
+            le=10,
             default=1,
         ),
         image_resolution: int = Input(
@@ -295,7 +294,7 @@ class Predictor(BasePredictor):
             choices=SCHEDULERS.keys(),
             description="Choose a scheduler.",
         ),
-        steps: int = Input(description="Steps", default=20),
+        num_inference_steps: int = Input(description="Steps to run denoising", default=20),
         guidance_scale: float = Input(
             description="Scale for classifier-free guidance",
             default=9.0,
@@ -328,6 +327,9 @@ class Predictor(BasePredictor):
         guess_mode: bool = Input(
             description="In this mode, the ControlNet encoder will try best to recognize the content of the input image even if you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.",
             default=False,
+        ),
+        disable_safety_check: bool = Input(
+            description="Disable safety check. Use at your own risk!", default=False
         ),
     ) -> List[Path]:
         if len(MISSING_WEIGHTS) > 0:
@@ -372,21 +374,36 @@ class Predictor(BasePredictor):
 
         generator = torch.Generator("cuda").manual_seed(seed)
 
-        outputs = pipe(
-            prompt,
-            height=height,
-            width=width,
-            num_inference_steps=steps,
-            guidance_scale=guidance_scale,
-            eta=eta,
-            negative_prompt=negative_prompt,
-            num_images_per_prompt=num_samples,
-            generator=generator,
-            **kwargs,
-        )
-        output_paths = []
-        for i, sample in enumerate(outputs.images):
-            output_path = f"/tmp/out-{i}.png"
-            sample.save(output_path)
-            output_paths.append(Path(output_path))
-        return output_paths
+        if disable_safety_check:
+            pipe.safety_checker = None
+
+        result_count = 0
+        for idx in range(num_outputs):
+            this_seed = seed + idx
+            generator = torch.Generator("cuda").manual_seed(this_seed)
+
+            output = pipe(
+                prompt,
+                height=height,
+                width=width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                eta=eta,
+                negative_prompt=negative_prompt,
+                num_images_per_prompt=1,
+                generator=generator,
+                **kwargs,
+            )
+
+            if output.nsfw_content_detected and output.nsfw_content_detected[0]:
+                continue
+
+            output_path = f"/tmp/seed-{this_seed}.png"
+            output.images[0].save(output_path)
+            yield Path(output_path)
+            result_count += 1
+
+        if result_count == 0:
+            raise Exception(
+                f"NSFW content detected. Try running it again, or try a different prompt."
+            )

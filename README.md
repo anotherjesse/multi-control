@@ -44,9 +44,14 @@ Then, you can run predictions:
 
 ## Issues
 
-- [ ] support aspect ratio from image (currently it is resized to a square?)
+- [x] support aspect ratio from image (currently it is resized to a square?)
+- [ ] update from dan's changes to cog-controlnet
+- [ ] ability to turn on and off safety checker
+- [ ] re-add prompt weighting
+- [ ] img2img support
 - [ ] safety results aren't checked (resulting in a black image?)
 - [ ] ability to return processed control image(s)
 - [ ] ability to send pre-processed control image(s)
-- [ ] support for multiple control nets / images
-- [ ] support for controlnet guidance scale
+- [ ] what if pre-processed control images are not the same size/ratio?
+- [x] support for multiple control nets / images
+- [x] support for controlnet guidance scale

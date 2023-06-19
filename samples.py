@@ -33,14 +33,14 @@ def main():
         "sample.none.png",
         prompt="taylor swift in a mid century modern bedroom",
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.canny.png",
         prompt="taylor swift in a mid century modern bedroom",
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.qr.png",
@@ -49,7 +49,7 @@ def main():
         qr_conditioning_scale=1.5,
         seed=42,
         scheduler="K_EULER",
-        steps=50,
+        num_inference_steps=50,
     )
     gen(
         "sample.canny.guess.png",
@@ -57,14 +57,14 @@ def main():
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         guess_mode=True,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.hough.png",
         prompt="taylor swift in a mid century modern bedroom",
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.hough.guess.png",
@@ -72,7 +72,7 @@ def main():
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.normal.png",
@@ -80,7 +80,7 @@ def main():
         normal_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.depth.png",
@@ -88,7 +88,7 @@ def main():
         depth_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         guess_mode=True,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.both.png",
@@ -96,7 +96,7 @@ def main():
         hough_image="https://huggingface.co/takuma104/controlnet_dev/resolve/main/gen_compare/control_images/room_512x512.png",
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.both.guess.png",
@@ -105,7 +105,7 @@ def main():
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         guess_mode=True,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.scaled.png",
@@ -115,7 +115,7 @@ def main():
         canny_image="https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png",
         canny_conditioning_scale=0.8,
         seed=42,
-        steps=30,
+        num_inference_steps=30,
     )
     gen(
         "sample.seg.png",
