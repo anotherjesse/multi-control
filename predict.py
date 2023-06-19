@@ -42,7 +42,7 @@ AUX_IDS = {
     "hough": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
     "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
     "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
-    'qr': 'DionTimmer/controlnet_qrcode-control_v1p_sd15',
+    "qr": "DionTimmer/controlnet_qrcode-control_v1p_sd15",
 }
 
 SCHEDULERS = {
@@ -140,21 +140,19 @@ class Predictor(BasePredictor):
 
     def scribble_preprocess(self, img):
         return self.hed(img, scribble=True)
-    
+
     def qr_preprocess(self, img):
         return img
-    
+
     def pose_preprocess(self, img):
         return self.pose(img)
-    
+
     def hed_preprocess(self, img):
         return self.hed(img)
 
     def seg_preprocess(self, image):
         image = image.convert("RGB")
-        pixel_values = self.seg_processor(
-            image, return_tensors="pt"
-        ).pixel_values
+        pixel_values = self.seg_processor(image, return_tensors="pt").pixel_values
         with torch.no_grad():
             outputs = self.seg_segmentor(pixel_values)
         seg = self.seg_processor.post_process_semantic_segmentation(
@@ -177,10 +175,12 @@ class Predictor(BasePredictor):
         processed_control_images = []
         conditioning_scales = []
 
-        for name, [image, conditioning_scale] in inputs.items():
-            if image is None:
+        for input in inputs.items():
+            if input["image"] is None or input["name"] is None:
                 continue
+            name = input["name"]
             control_nets.append(self.controlnets[name])
+            image = input["image"]
             img = Image.open(image)
             if name == "canny":
                 img = self.canny_preprocess(img, low_threshold, high_threshold)
@@ -188,6 +188,10 @@ class Predictor(BasePredictor):
                 img = getattr(self, "{}_preprocess".format(name))(img)
 
             processed_control_images.append(img)
+            if input["conditioning_scale"] is None:
+                conditioning_scale = 1.0
+            else:
+                conditioning_scale = input["conditioning_scale"]
             conditioning_scales.append(conditioning_scale)
 
         if len(control_nets) == 0:
@@ -216,67 +220,41 @@ class Predictor(BasePredictor):
     def predict(
         self,
         prompt: str = Input(description="Prompt for the model"),
-        canny_image: Path = Input(
-            description="Control image for canny controlnet", default=None
+        controlnet_1: str = Input(
+            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
         ),
-        canny_conditioning_scale: float = Input(
-            description="Conditioning scale for canny controlnet",
-            default=1,
+        controlnet_1_image: Path = Input(
+            description="Control image for controlnet", default=None
         ),
-        depth_image: Path = Input(
-            description="Control image for depth controlnet", default=None
+        controlnet_1_conditioning_scale: float = Input(
+            description="override scale for controlnet", default=None
         ),
-        depth_conditioning_scale: float = Input(
-            description="Conditioning scale for depth controlnet",
-            default=1,
+        controlnet_2: str = Input(
+            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
         ),
-        hed_image: Path = Input(
-            description="Control image for hed controlnet", default=None
+        controlnet_2_image: Path = Input(
+            description="Control image for controlnet", default=None
         ),
-        hed_conditioning_scale: float = Input(
-            description="Conditioning scale for hed controlnet", default=1
+        controlnet_2_conditioning_scale: float = Input(
+            description="override scale for controlnet", default=None
         ),
-        hough_image: Path = Input(
-            description="Control image for hough controlnet", default=None
+        controlnet_3: str = Input(
+            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
         ),
-        hough_conditioning_scale: float = Input(
-            description="Conditioning scale for hough controlnet",
-            default=1,
+        controlnet_3_image: Path = Input(
+            description="Control image for controlnet", default=None
         ),
-        normal_image: Path = Input(
-            description="Control image for normal controlnet", default=None
+        controlnet_3_conditioning_scale: float = Input(
+            description="override scale for controlnet", default=None
         ),
-        normal_conditioning_scale: float = Input(
-            description="Conditioning scale for normal controlnet",
-            default=1,
+        controlnet_4: str = Input(
+            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
         ),
-        pose_image: Path = Input(
-            description="Control image for pose controlnet", default=None
+        controlnet_4_image: Path = Input(
+            description="Control image for controlnet", default=None
         ),
-        pose_conditioning_scale: float = Input(
-            description="Conditioning scale for pose controlnet",
-            default=1,
-        ),
-        scribble_image: Path = Input(
-            description="Control image for scribble controlnet", default=None
-        ),
-        scribble_conditioning_scale: float = Input(
-            description="Conditioning scale for scribble controlnet",
-            default=1,
-        ),
-        seg_image: Path = Input(
-            description="Control image for seg controlnet", default=None
-        ),
-        seg_conditioning_scale: float = Input(
-            description="Conditioning scale for seg controlnet",
-            default=1,
-        ),
-        qr_image: Path = Input(
-            description="Control image for qr controlnet", default=None
-        ),
-        qr_conditioning_scale: float = Input(
-            description="Conditioning scale for qr controlnet",
-            default=1,
+        controlnet_4_conditioning_scale: float = Input(
+            description="override scale for controlnet", default=None
         ),
         num_outputs: int = Input(
             description="Number of images to generate",
@@ -294,7 +272,9 @@ class Predictor(BasePredictor):
             choices=SCHEDULERS.keys(),
             description="Choose a scheduler.",
         ),
-        num_inference_steps: int = Input(description="Steps to run denoising", default=20),
+        num_inference_steps: int = Input(
+            description="Steps to run denoising", default=20
+        ),
         guidance_scale: float = Input(
             description="Scale for classifier-free guidance",
             default=9.0,
@@ -310,9 +290,9 @@ class Predictor(BasePredictor):
             description="Negative prompt",
             default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
         ),
-        # Only applicable when model type is 'canny'
+        # Only applicable when using 'canny'
         low_threshold: int = Input(
-            description="[canny only] Line detection low threshold",
+            description="[canny only] Line detection low threshold`",
             default=100,
             ge=1,
             le=255,
@@ -336,17 +316,28 @@ class Predictor(BasePredictor):
             raise Exception("missing weights")
 
         pipe, kwargs = self.build_pipe(
-            {
-                "canny": [canny_image, canny_conditioning_scale],
-                "depth": [depth_image, depth_conditioning_scale],
-                "hed": [hed_image, hed_conditioning_scale],
-                "hough": [hough_image, hough_conditioning_scale],
-                "normal": [normal_image, normal_conditioning_scale],
-                "pose": [pose_image, pose_conditioning_scale],
-                "scribble": [scribble_image, scribble_conditioning_scale],
-                "seg": [seg_image, seg_conditioning_scale],
-                "qr": [qr_image, qr_conditioning_scale],
-            },
+            [
+                {
+                    "name": controlnet_1,
+                    "image": controlnet_1_image,
+                    "conditioning_scale": controlnet_1_conditioning_scale,
+                },
+                {
+                    "name": controlnet_2,
+                    "image": controlnet_2_image,
+                    "conditioning_scale": controlnet_2_conditioning_scale,
+                },
+                {
+                    "name": controlnet_3,
+                    "image": controlnet_3_image,
+                    "conditioning_scale": controlnet_3_conditioning_scale,
+                },
+                {
+                    "name": controlnet_4,
+                    "image": controlnet_4_image,
+                    "conditioning_scale": controlnet_4_conditioning_scale,
+                },
+            ],
             low_threshold=low_threshold,
             high_threshold=high_threshold,
             guess_mode=guess_mode,
