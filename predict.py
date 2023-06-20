@@ -45,10 +45,17 @@ AUX_IDS = {
     "qr": "DionTimmer/controlnet_qrcode-control_v1p_sd15",
 }
 
+
+class KerrasDPM:
+    def from_config(config):
+        return DPMSolverMultistepScheduler.from_config(config, use_karras_sigmas=True)
+
+
 SCHEDULERS = {
     "DDIM": DDIMScheduler,
     "DPMSolverMultistep": DPMSolverMultistepScheduler,
     "HeunDiscrete": HeunDiscreteScheduler,
+    "KerrasDPM": KerrasDPM,
     "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler,
     "K_EULER": EulerDiscreteScheduler,
     "KLMS": LMSDiscreteScheduler,
@@ -222,6 +229,10 @@ class Predictor(BasePredictor):
     def predict(
         self,
         prompt: str = Input(description="Prompt for the model"),
+        negative_prompt: str = Input(  # FIXME
+            description="Negative prompt",
+            default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
+        ),
         controlnet_1: str = Input(
             description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
         ),
@@ -270,7 +281,7 @@ class Predictor(BasePredictor):
             default=512,
         ),
         scheduler: str = Input(
-            default="DDIM",
+            default="KerrasDPM",
             choices=SCHEDULERS.keys(),
             description="Choose a scheduler.",
         ),
@@ -287,10 +298,6 @@ class Predictor(BasePredictor):
         eta: float = Input(
             description="Controls the amount of noise that is added to the input data during the denoising diffusion process. Higher value -> more noise",
             default=0.0,
-        ),
-        negative_prompt: str = Input(  # FIXME
-            description="Negative prompt",
-            default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
         ),
         # Only applicable when using 'canny'
         low_threshold: int = Input(
