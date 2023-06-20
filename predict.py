@@ -6,12 +6,21 @@ import numpy as np
 from PIL import Image
 import cv2
 import time
+import shutil
 import sys
+
+from torchvision.io.video import read_video, write_video
+from torchvision.models.optical_flow import Raft_Large_Weights, raft_large
+from torchvision.transforms.functional import resize
+from torchvision.utils import flow_to_image
+from tqdm import trange
+
 
 from transformers import pipeline, AutoImageProcessor, UperNetForSemanticSegmentation
 from cog import BasePredictor, Input, Path
 from diffusers import (
     StableDiffusionControlNetPipeline,
+    StableDiffusionControlNetImg2ImgPipeline,
     ControlNetModel,
     StableDiffusionPipeline,
     DDIMScheduler,
@@ -32,6 +41,7 @@ from controlnet_aux import (
 from controlnet_aux.util import ade_palette
 from midas_hack import MidasDetector
 
+raft_transform = Raft_Large_Weights.DEFAULT.transforms()
 
 AUX_IDS = {
     "canny": "lllyasviel/sd-controlnet-canny",
@@ -40,9 +50,10 @@ AUX_IDS = {
     "hed": "fusing/stable-diffusion-v1-5-controlnet-hed",
     "scribble": "fusing/stable-diffusion-v1-5-controlnet-scribble",
     "hough": "fusing/stable-diffusion-v1-5-controlnet-mlsd",
-    "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
     "pose": "fusing/stable-diffusion-v1-5-controlnet-openpose",
     "qr": "DionTimmer/controlnet_qrcode-control_v1p_sd15",
+    "seg": "fusing/stable-diffusion-v1-5-controlnet-seg",
+    "temporalnet2": "wav/TemporalNet2",
 }
 
 
@@ -92,193 +103,55 @@ class Predictor(BasePredictor):
         print("Loading pipeline...")
         st = time.time()
 
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            SD15_WEIGHTS, torch_dtype=torch.float16, local_files_only=True
-        ).to("cuda")
-
-        self.controlnets = {}
-        for name in AUX_IDS.keys():
-            self.controlnets[name] = ControlNetModel.from_pretrained(
-                os.path.join(CONTROLNET_CACHE, name),
+        self.pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+            SD15_WEIGHTS,
+            controlnet=ControlNetModel.from_pretrained(
+                os.path.join(CONTROLNET_CACHE, "temporalnet2"),
                 torch_dtype=torch.float16,
-                local_files_only=True,
-            ).to("cuda")
-
-        self.canny = CannyDetector()
-
-        # Depth + Normal
-        self.midas = MidasDetector.from_pretrained(
-            "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
+            ),
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            self.pipe.scheduler.config
         )
-
-        self.hed = HEDdetector.from_pretrained(
-            "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
-        )
-
-        # Hough
-        self.mlsd = MLSDdetector.from_pretrained(
-            "lllyasviel/ControlNet", cache_dir=PROCESSORS_CACHE
-        )
-
-        self.seg_processor = AutoImageProcessor.from_pretrained(
-            "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
-        )
-        self.seg_segmentor = UperNetForSemanticSegmentation.from_pretrained(
-            "openmmlab/upernet-convnext-small", cache_dir=PROCESSORS_CACHE
-        )
-
-        self.pose = OpenposeDetector.from_pretrained(
-            "lllyasviel/Annotators", cache_dir=PROCESSORS_CACHE
+        self.pipe.enable_xformers_memory_efficient_attention()
+        self.pipe._progress_bar_config = dict(disable=True)
+        self.safety_checker = self.pipe.safety_checker
+        self.raft = (
+            raft_large(weights=Raft_Large_Weights.DEFAULT, progress=True)
+            .eval()
+            .to("cuda")
         )
 
         print("Setup complete in %f" % (time.time() - st))
-
-    def canny_preprocess(self, img, low_threshold=100, high_threshold=200):
-        return self.canny(img, low_threshold, high_threshold)
-
-    def depth_preprocess(self, img):
-        return self.midas(img)
-
-    def hough_preprocess(self, img):
-        return self.mlsd(img)
-
-    def normal_preprocess(self, img):
-        return self.midas(img, depth_and_normal=True)[1]
-
-    def scribble_preprocess(self, img):
-        return self.hed(img, scribble=True)
-
-    def qr_preprocess(self, img):
-        return img
-
-    def pose_preprocess(self, img):
-        return self.pose(img)
-
-    def hed_preprocess(self, img):
-        return self.hed(img)
-
-    def seg_preprocess(self, image):
-        image = image.convert("RGB")
-        pixel_values = self.seg_processor(image, return_tensors="pt").pixel_values
-        with torch.no_grad():
-            outputs = self.seg_segmentor(pixel_values)
-        seg = self.seg_processor.post_process_semantic_segmentation(
-            outputs, target_sizes=[image.size[::-1]]
-        )[0]
-        color_seg = np.zeros(
-            (seg.shape[0], seg.shape[1], 3), dtype=np.uint8
-        )  # height, width, 3
-        palette = np.array(ade_palette())
-        for label, color in enumerate(palette):
-            color_seg[seg == label, :] = color
-        color_seg = color_seg.astype(np.uint8)
-        image = Image.fromarray(color_seg)
-        return image
-
-    def build_pipe(
-        self, inputs, low_threshold=100, high_threshold=200, guess_mode=False
-    ):
-        control_nets = []
-        processed_control_images = []
-        conditioning_scales = []
-
-        print(inputs)
-        for input in inputs:
-            if input["image"] is None or input["name"] is None:
-                continue
-            name = input["name"]
-            print("adding controlnet: ", name)
-            control_nets.append(self.controlnets[name])
-            image = input["image"]
-            img = Image.open(image)
-            if name == "canny":
-                img = self.canny_preprocess(img, low_threshold, high_threshold)
-            else:
-                img = getattr(self, "{}_preprocess".format(name))(img)
-
-            processed_control_images.append(img)
-            if input["conditioning_scale"] is None:
-                conditioning_scale = 1.0
-            else:
-                conditioning_scale = input["conditioning_scale"]
-            conditioning_scales.append(conditioning_scale)
-
-        if len(control_nets) == 0:
-            pipe = self.pipe
-            kwargs = {}
-        else:
-            pipe = StableDiffusionControlNetPipeline(
-                vae=self.pipe.vae,
-                text_encoder=self.pipe.text_encoder,
-                tokenizer=self.pipe.tokenizer,
-                unet=self.pipe.unet,
-                scheduler=self.pipe.scheduler,
-                safety_checker=self.pipe.safety_checker,
-                feature_extractor=self.pipe.feature_extractor,
-                controlnet=control_nets,
-            )
-            kwargs = {
-                "image": processed_control_images,
-                "controlnet_conditioning_scale": conditioning_scales,
-                "guess_mode": guess_mode,
-            }
-
-        return pipe, kwargs
 
     @torch.inference_mode()
     def predict(
         self,
         prompt: str = Input(description="Prompt for the model"),
+        input_video: Path = Input(description="Input video"),
         negative_prompt: str = Input(  # FIXME
             description="Negative prompt",
             default="Longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality",
         ),
-        controlnet_1: str = Input(
-            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
+        strength: float = Input(
+            description="How heavily stylization affects the image", default=0.7
         ),
-        controlnet_1_image: Path = Input(
-            description="Control image for controlnet", default=None
+        controlnet_scale: float = Input(
+            description="Controlnet conditioning scale",
+            default=1.0,
         ),
-        controlnet_1_conditioning_scale: float = Input(
-            description="override scale for controlnet", default=None
-        ),
-        controlnet_2: str = Input(
-            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
-        ),
-        controlnet_2_image: Path = Input(
-            description="Control image for controlnet", default=None
-        ),
-        controlnet_2_conditioning_scale: float = Input(
-            description="override scale for controlnet", default=None
-        ),
-        controlnet_3: str = Input(
-            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
-        ),
-        controlnet_3_image: Path = Input(
-            description="Control image for controlnet", default=None
-        ),
-        controlnet_3_conditioning_scale: float = Input(
-            description="override scale for controlnet", default=None
-        ),
-        controlnet_4: str = Input(
-            description="Structure of controlnet", default=None, choices=AUX_IDS.keys()
-        ),
-        controlnet_4_image: Path = Input(
-            description="Control image for controlnet", default=None
-        ),
-        controlnet_4_conditioning_scale: float = Input(
-            description="override scale for controlnet", default=None
-        ),
-        num_outputs: int = Input(
-            description="Number of images to generate",
-            ge=1,
-            le=10,
-            default=1,
-        ),
-        image_resolution: int = Input(
-            description="Resolution of image (smallest dimension)",
-            choices=[256, 512, 768],
+        width: int = Input(
+            description="width",
             default=512,
+        ),
+        height: int = Input(
+            description="height",
+            default=512,
+        ),
+        batch_size: int = Input(
+            description="Batch size (more = faster but more memory)",
+            default=4,
         ),
         scheduler: str = Input(
             default="KerrasDPM",
@@ -290,33 +163,11 @@ class Predictor(BasePredictor):
         ),
         guidance_scale: float = Input(
             description="Scale for classifier-free guidance",
-            default=9.0,
+            default=7.5,
             ge=0.1,
             le=30.0,
         ),
         seed: int = Input(description="Seed", default=None),
-        eta: float = Input(
-            description="Controls the amount of noise that is added to the input data during the denoising diffusion process. Higher value -> more noise",
-            default=0.0,
-        ),
-        # Only applicable when using 'canny'
-        low_threshold: int = Input(
-            description="[canny only] Line detection low threshold`",
-            default=100,
-            ge=1,
-            le=255,
-        ),
-        # Only applicable when model type is 'canny'
-        high_threshold: int = Input(
-            description="[canny only] Line detection high threshold",
-            default=200,
-            ge=1,
-            le=255,
-        ),
-        guess_mode: bool = Input(
-            description="In this mode, the ControlNet encoder will try best to recognize the content of the input image even if you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.",
-            default=False,
-        ),
         disable_safety_check: bool = Input(
             description="Disable safety check. Use at your own risk!", default=False
         ),
@@ -324,86 +175,77 @@ class Predictor(BasePredictor):
         if len(MISSING_WEIGHTS) > 0:
             raise Exception("missing weights")
 
-        pipe, kwargs = self.build_pipe(
-            [
-                {
-                    "name": controlnet_1,
-                    "image": controlnet_1_image,
-                    "conditioning_scale": controlnet_1_conditioning_scale,
-                },
-                {
-                    "name": controlnet_2,
-                    "image": controlnet_2_image,
-                    "conditioning_scale": controlnet_2_conditioning_scale,
-                },
-                {
-                    "name": controlnet_3,
-                    "image": controlnet_3_image,
-                    "conditioning_scale": controlnet_3_conditioning_scale,
-                },
-                {
-                    "name": controlnet_4,
-                    "image": controlnet_4_image,
-                    "conditioning_scale": controlnet_4_conditioning_scale,
-                },
-            ],
-            low_threshold=low_threshold,
-            high_threshold=high_threshold,
-            guess_mode=guess_mode,
-        )
-        pipe.enable_xformers_memory_efficient_attention()
-        pipe.scheduler = SCHEDULERS[scheduler].from_config(pipe.scheduler.config)
-
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
 
-        if "image" in kwargs:
-            img = kwargs["image"][0]
-            scale = float(image_resolution) / (min(img.size))
-
-            def quick_rescale(dim):
-                """quick rescale to a multiple of 64, as per original controlnet"""
-                dim *= scale
-                return int(np.round(dim / 64.0)) * 64
-
-            width = quick_rescale(img.size[0])
-            height = quick_rescale(img.size[1])
-        else:
-            width = height = image_resolution
-
         generator = torch.Generator("cuda").manual_seed(seed)
 
         if disable_safety_check:
-            pipe.safety_checker = None
+            self.pipe.safety_checker = None
+        else:
+            self.pipe.safety_checker = self.safety_checker
 
-        result_count = 0
-        for idx in range(num_outputs):
-            this_seed = seed + idx
-            generator = torch.Generator("cuda").manual_seed(this_seed)
+        raft = (
+            raft_large(weights=Raft_Large_Weights.DEFAULT, progress=True)
+            .eval()
+            .to("cuda")
+        )
 
-            output = pipe(
-                prompt,
+        if os.path.exists("input.mov"):
+            os.unlink("input.mov")
+        shutil.copy(input_video, "input.mov")
+
+        input_video, _, info = read_video(
+            "input.mov", pts_unit="sec", output_format="TCHW"
+        )
+        input_video = input_video.div(255)
+
+        output_video = []
+        for i in trange(
+            1,
+            len(input_video),
+            batch_size,
+            desc="Diffusing...",
+            unit="frame",
+            unit_scale=batch_size,
+        ):
+            prev = resize(
+                input_video[i - 1 : i - 1 + batch_size], (height, width), antialias=True
+            ).to("cuda")
+            curr = resize(
+                input_video[i : i + batch_size], (height, width), antialias=True
+            ).to("cuda")
+            prev = prev[
+                : curr.shape[0]
+            ]  # make sure prev and curr have the same batch size (for the last batch)
+
+            flow_img = flow_to_image(
+                self.raft.forward(*raft_transform(prev, curr))[-1]
+            ).div(255)
+            control_img = torch.cat((prev, flow_img), dim=1)
+
+            output, _ = self.pipe(
+                prompt=[prompt] * curr.shape[0],
+                image=curr,
+                control_image=control_img,
                 height=height,
                 width=width,
+                strength=strength,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
-                eta=eta,
-                negative_prompt=negative_prompt,
-                num_images_per_prompt=1,
+                controlnet_conditioning_scale=controlnet_scale,
                 generator=generator,
-                **kwargs,
+                output_type="pt",
+                return_dict=False,
             )
 
-            if output.nsfw_content_detected and output.nsfw_content_detected[0]:
-                continue
+            output_video.append(output.permute(0, 2, 3, 1).cpu())
 
-            output_path = f"/tmp/seed-{this_seed}.png"
-            output.images[0].save(output_path)
-            yield Path(output_path)
-            result_count += 1
+        out_file = "output.mp4"
+        if os.path.exists(out_file):
+            os.remove(out_file)
 
-        if result_count == 0:
-            raise Exception(
-                f"NSFW content detected. Try running it again, or try a different prompt."
-            )
+        write_video(out_file, torch.cat(output_video).mul(255), fps=info["video_fps"])
+
+        return [Path(out_file)]
