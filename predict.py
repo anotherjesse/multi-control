@@ -126,8 +126,8 @@ class Predictor(BasePredictor):
 
         print("Setup complete in %f" % (time.time() - st))
 
-    def canny_preprocess(self, img):
-        return self.canny(img)
+    def canny_preprocess(self, img, low_threshold, high_threshold):
+        return self.canny(img, low_threshold, high_threshold)
 
     def depth_preprocess(self, img):
         return self.midas(img)
