@@ -33,11 +33,6 @@ if os.path.exists(TMP_CACHE):
     shutil.rmtree(TMP_CACHE)
 os.makedirs(TMP_CACHE)
 
-p = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, cache_dir=TMP_CACHE
-        )
-p.save_pretrained(SD15_WEIGHTS)
-
 for name, model in AUX_IDS.items():
     aux = ControlNetModel.from_pretrained(
         model,
